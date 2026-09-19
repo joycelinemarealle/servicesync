@@ -49,6 +49,7 @@ class AppointmentRead(BaseModel):
 
 class ServiceCreate(BaseModel):
     name: str
+    price : str
     duration_minutes : int
 
 class ServiceRead(BaseModel):
