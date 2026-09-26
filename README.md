@@ -1,6 +1,6 @@
 # ServiceSync
 
-A backend booking system for a hair business — customers can register, browse services, and book appointments with the stylist. Built as a learning project to go deep on backend engineering, databases, and (later) distributed systems.
+A backend booking system for a hair business — customers can register, browse services, and book appointments with the stylist. Built as a learning project to go deep on backend engineering, databases, and later distributed systems.
 
 Originally prototyped as a Java/Spring/Angular app; this version is a ground-up rebuild in Python to focus on backend fundamentals done well.
 
@@ -9,7 +9,7 @@ Originally prototyped as a Java/Spring/Angular app; this version is a ground-up 
 - Register and look up customers
 - List the services on offer (e.g. braiding, blowout) with price and duration
 - Book an appointment linking a customer to a service at a specific time
-- Prevent double-booking the same time slot (returns a clean 409 Conflict)
+- Prevent double-booking the same time slot (returns a clean `409 Conflict`)
 
 ## Tech stack
 
@@ -18,7 +18,7 @@ Originally prototyped as a Java/Spring/Angular app; this version is a ground-up 
 - **SQLAlchemy** — talks to the database using Python objects instead of raw SQL
 - **Pydantic** — validates data coming in and going out of the API
 - **Docker** — runs Postgres in an isolated container
-- **Alembic** — database migrations (planned)
+- **Alembic** — manages database schema migrations
 
 ### Planned additions
 
@@ -31,25 +31,31 @@ Originally prototyped as a Java/Spring/Angular app; this version is a ground-up 
 An LLM used as an untrusted input parser at the edge — it turns messy human text into structured, validated data, then normal deterministic code does the actual database work.
 
 - **Natural-language service search** — e.g. "box braids under $100 this weekend" parsed into a structured query (service type + price + date)
-- **Smart scheduling suggestions** — when a slot is taken, suggest the best alternative times based on service duration and existing bookings
-- **Booking assistant chatbot** — a conversational way to book, where the model calls the booking logic via tool calling and handles multi-turn state
+- **Smart scheduling suggestions** — interpret customer preferences and suggest valid alternatives based on deterministic availability checks
+- **Booking assistant chatbot** — a conversational way to book, where the model calls the booking logic through tool calling and handles multi-turn state
 
 ## How it's structured
 
-```
+```text
 servicesync/
   app/
     __init__.py
     database.py     # database connection + session setup
     models.py       # database tables (Customer, Service, Appointment)
     schemas.py      # data shapes for API requests/responses
-    main.py         # the API endpoints
-  create_tables.py  # one-off script to create the tables
+    main.py         # API endpoints
+
+  alembic/
+    versions/       # database migration history
+    env.py          # connects Alembic to the app's database/models
+
+  alembic.ini       # Alembic configuration
+  create_tables.py  # original script used to create the tables
 ```
 
-### The data model
+## The data model
 
-Three tables, with Appointment linking the other two:
+Three tables, with `Appointment` linking the other two:
 
 - **Customer** — id, name, email, phone
 - **Service** — id, name, price, duration
@@ -61,33 +67,42 @@ An appointment belongs to one customer and one service; a customer or service ca
 
 **Prerequisites:** Python 3.11+, Docker Desktop.
 
-1. **Start the database** (runs Postgres in Docker, exposed on port 5433):
-   ```
-   docker run --name servicesync-db \
-     -e POSTGRES_PASSWORD=devpass \
-     -e POSTGRES_DB=servicesync \
-     -p 5433:5432 -d postgres:16
-   ```
-   > Note: mapped to **5433** (not the default 5432) to avoid a conflict with a native Postgres already running on this machine.
+### 1. Start the database
 
-2. **Set up the Python environment:**
-   ```
-   python -m venv venv
-   source venv/bin/activate
-   pip install fastapi uvicorn sqlalchemy psycopg2-binary python-dotenv alembic "pydantic[email]"
-   ```
+Postgres runs in Docker and is exposed on port `5433`:
 
-3. **Create the tables:**
-   ```
-   python create_tables.py
-   ```
+```bash
+docker run --name servicesync-db \
+  -e POSTGRES_PASSWORD=devpass \
+  -e POSTGRES_DB=servicesync \
+  -p 5433:5432 -d postgres:16
+```
 
-4. **Run the API:**
-   ```
-   uvicorn app.main:app --reload
-   ```
+> Port `5433` is used instead of the default `5432` to avoid a conflict with a native Postgres already running on the machine.
 
-5. **Open the interactive docs** at http://localhost:8000/docs to try the endpoints.
+### 2. Set up the Python environment
+
+```bash
+python -m venv venv
+source venv/bin/activate
+python -m pip install fastapi uvicorn sqlalchemy psycopg2-binary python-dotenv alembic "pydantic[email]"
+```
+
+### 3. Create the tables
+
+```bash
+python create_tables.py
+```
+
+### 4. Run the API
+
+```bash
+uvicorn app.main:app --reload
+```
+
+### 5. Open the API docs
+
+Open `http://localhost:8000/docs` to test the endpoints through FastAPI's interactive Swagger UI.
 
 ## API endpoints
 
@@ -98,28 +113,62 @@ An appointment belongs to one customer and one service; a customer or service ca
 | POST | `/services` | Add a service |
 | GET | `/services` | List all services |
 | GET | `/services/{id}` | Get a service by id |
-| POST | `/appointments` | Book an appointment (rejects a taken slot with 409) |
+| POST | `/appointments` | Book an appointment; rejects a taken slot with 409 |
 | GET | `/appointments/{id}` | Get an appointment by id |
 
-### Preventing double-booking
+## Preventing double-booking
 
-`start_time` has a **unique constraint** at the database level, so two appointments can't share the same slot. The naive "check if free, then book" approach has a race condition: two requests arriving at once both see the slot free before either saves. The unique constraint closes that gap — the database itself rejects the second insert atomically, with no window for the race. The endpoint catches the resulting `IntegrityError`, rolls back, and returns a `409 Conflict` ("That time slot is already booked.") instead of an unhandled 500.
+`start_time` has a **unique constraint** at the database level, so two appointments can't share the exact same slot.
 
-*Current limit:* this blocks exact-time collisions, not duration overlaps (a 2-hour booking at 2:00 doesn't yet block a 3:00 booking). Overlap detection is a planned follow-up.
+A naive "check if free, then book" approach has a race condition: two requests arriving at the same time could both see the slot as available before either one saves.
+
+The unique constraint closes that gap. PostgreSQL atomically rejects the second insert. The API catches the resulting `IntegrityError`, rolls back the failed transaction, and returns a `409 Conflict` ("That time slot is already booked.") instead of an unhandled 500 error.
+
+**Current limit:** this prevents exact-time collisions, not duration overlaps. For example, a two-hour appointment starting at 2:00 PM does not yet prevent another appointment from starting at 3:00 PM. Duration-aware overlap detection is a planned follow-up.
+
+## Database migrations with Alembic
+
+Alembic manages changes to the database schema without having to drop and recreate tables.
+
+SQLAlchemy models describe what the schema **should** look like, while PostgreSQL contains the actual existing tables. Alembic tracks schema changes as migrations so the database can be updated while keeping existing data.
+
+Alembic is connected to:
+
+- `DATABASE_URL` — tells Alembic which PostgreSQL database to update
+- `Base.metadata` — tells Alembic what tables and columns are defined by the SQLAlchemy models
+
+The first migration was created and the database is now tracked by Alembic. A `created_at` column was added to appointments as the first real schema migration.
+
+### Migration workflow
+
+After changing a SQLAlchemy model:
+
+```bash
+# 1. Generate a migration
+python -m alembic revision --autogenerate -m "describe the change"
+
+# 2. Apply the migration
+python -m alembic upgrade head
+
+# 3. Verify the models and database are in sync
+python -m alembic check
+```
+
+Generated migrations are reviewed before applying them to the database.
 
 ## Roadmap
 
 - [x] Prevent double-booking (unique constraint + 409 Conflict)
-- [ ] Duration-aware overlap detection (row locking or exclusion constraint)
+- [x] Database migrations with Alembic
 - [ ] Authentication (password hashing + JWT login)
+- [ ] Duration-aware overlap detection (row locking or exclusion constraint)
 - [ ] Automated tests (pytest)
-- [ ] Database migrations with Alembic
+- [ ] AI: natural-language service search
+- [ ] AI: smart scheduling suggestions (builds on overlap detection)
+- [ ] AI: booking assistant chatbot (needs auth)
 - [ ] React frontend
 - [ ] Containerize the app with Docker Compose
 - [ ] Explore deployment / orchestration
-- [ ] AI: natural-language service search
-- [ ] AI: smart scheduling suggestions
-- [ ] AI: booking assistant chatbot
 
 ## Notes
 

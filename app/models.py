@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, ForeignKey, DateTime
+from sqlalchemy import Column, Integer, String, ForeignKey, DateTime, func
 from sqlalchemy.orm import relationship
 
 #for database
@@ -19,6 +19,7 @@ class Appointment(Base):
     service_id = Column(Integer, ForeignKey("services.id"), nullable=False)
     start_time = Column(DateTime, nullable=False, unique=True)
     status = Column(String, nullable=False, default="confirmed")
+    created_at = Column(DateTime, nullable=False, server_default=func.now())     # allows appointment.service.namepyth
 
     # allows appointment.service.namepyth
     customer = relationship("Customer")
