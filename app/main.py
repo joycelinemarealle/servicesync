@@ -1,3 +1,4 @@
+from sqlalchemy.exc import IntegrityError
 from app.database import SessionLocal
 from fastapi import FastAPI, Depends, HTTPException
 from sqlalchemy.orm import Session
@@ -41,14 +42,21 @@ def create_appointment(payload:AppointmentCreate, db: Session = Depends(get_db))
         service_id=payload.service_id,
         start_time=payload.start_time,
     )
-
+#409 error request invalid more specific than 500 which something went wrong with server
     db.add(appointment)
-    db.commit()
+    try:
+        db.commit() #try to save
+    except IntegrityError: #database rejected (duplicate start_time
+        db.rollback()   #undo failed transaction
+        raise HTTPException(
+            status_code=409,
+            detail="That time slot is already booked."
+        )
     db.refresh(appointment)
     return appointment
 
 
-@app.get("/appointment/{appointment_id}", response_model=AppointmentRead)
+@app.get("/appointments/{appointment_id}", response_model=AppointmentRead)
 def get_appointment(appointment_id: int, db: Session = Depends(get_db)):
     appointment = db.query(Appointment).filter(Appointment.id == appointment_id).first()
     if appointment is None:

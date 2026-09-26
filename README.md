@@ -1,4 +1,3 @@
-
 # ServiceSync
 
 A backend booking system for a hair business — customers can register, browse services, and book appointments with the stylist. Built as a learning project to go deep on backend engineering, databases, and (later) distributed systems.
@@ -10,7 +9,7 @@ Originally prototyped as a Java/Spring/Angular app; this version is a ground-up 
 - Register and look up customers
 - List the services on offer (e.g. braiding, blowout) with price and duration
 - Book an appointment linking a customer to a service at a specific time
-- (In progress) Prevent double-booking the same time slot
+- Prevent double-booking the same time slot (returns a clean 409 Conflict)
 
 ## Tech stack
 
@@ -98,12 +97,20 @@ An appointment belongs to one customer and one service; a customer or service ca
 | GET | `/customers/{id}` | Get a customer by id |
 | POST | `/services` | Add a service |
 | GET | `/services` | List all services |
-| POST | `/appointments` | Book an appointment |
+| GET | `/services/{id}` | Get a service by id |
+| POST | `/appointments` | Book an appointment (rejects a taken slot with 409) |
 | GET | `/appointments/{id}` | Get an appointment by id |
+
+### Preventing double-booking
+
+`start_time` has a **unique constraint** at the database level, so two appointments can't share the same slot. The naive "check if free, then book" approach has a race condition: two requests arriving at once both see the slot free before either saves. The unique constraint closes that gap — the database itself rejects the second insert atomically, with no window for the race. The endpoint catches the resulting `IntegrityError`, rolls back, and returns a `409 Conflict` ("That time slot is already booked.") instead of an unhandled 500.
+
+*Current limit:* this blocks exact-time collisions, not duration overlaps (a 2-hour booking at 2:00 doesn't yet block a 3:00 booking). Overlap detection is a planned follow-up.
 
 ## Roadmap
 
-- [ ] Prevent double-booking (transactions + locking)
+- [x] Prevent double-booking (unique constraint + 409 Conflict)
+- [ ] Duration-aware overlap detection (row locking or exclusion constraint)
 - [ ] Authentication (password hashing + JWT login)
 - [ ] Automated tests (pytest)
 - [ ] Database migrations with Alembic
@@ -117,6 +124,3 @@ An appointment belongs to one customer and one service; a customer or service ca
 ## Notes
 
 This is a learning project, built step by step to understand *why* each piece works, not just to make it run.
-
-# servicesync
-app uses 5433 port

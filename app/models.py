@@ -17,7 +17,7 @@ class Appointment(Base):
     id = Column(Integer, primary_key=True, index=True)
     customer_id = Column(Integer, ForeignKey("customers.id"), nullable=False) #hold value from customers table + cant be empty
     service_id = Column(Integer, ForeignKey("services.id"), nullable=False)
-    start_time = Column(DateTime, nullable=False)
+    start_time = Column(DateTime, nullable=False, unique=True)
     status = Column(String, nullable=False, default="confirmed")
 
     # allows appointment.service.namepyth
