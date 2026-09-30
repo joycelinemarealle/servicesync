@@ -18,6 +18,7 @@ class CustomerCreate(BaseModel):
     name: str
     email : EmailStr
     phone : str | None = None
+    password: str
 
 #read customer back
 class CustomerRead(BaseModel):

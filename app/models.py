@@ -10,6 +10,7 @@ class Customer(Base):
     name = Column(String, nullable=False)
     email = Column(String, unique=True, nullable=False)
     phone = Column(String)
+    hashed_password = Column(String, nullable=False)
 
 class Appointment(Base):
     __tablename__ = "appointments"
