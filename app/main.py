@@ -11,6 +11,9 @@ from app.schemas import(
     AppointmentCreate, AppointmentRead
 )
 
+from app.security import hash_password
+from app.security import hash_password, verify_password
+
 #when send POST request to this ULR run create_appointment function
 #POST sending you data to creat something, the return filter through model
 #payload(dummy variable is data client sending me, comes back in schema form set
@@ -60,22 +63,25 @@ def create_appointment(payload:AppointmentCreate, db: Session = Depends(get_db))
 def get_appointment(appointment_id: int, db: Session = Depends(get_db)):
     appointment = db.query(Appointment).filter(Appointment.id == appointment_id).first()
     if appointment is None:
-        raise HTTPException(status_code=404, detail="Appoiontmnet not found")
+        raise HTTPException(status_code=404, detail="Appointment not found")
     return appointment
 
 @app.post("/customers", response_model=CustomerRead)
-def create_customer(payload:CustomerCreate, db: Session = Depends(get_db)):
-    #Create customer
+def create_customer(payload: CustomerCreate, db: Session = Depends(get_db)):
+    hashed = hash_password(payload.password)
+
     customer = Customer(
         name=payload.name,
         email=payload.email,
         phone=payload.phone,
+        hashed_password=hashed,
     )
 
     db.add(customer)
     db.commit()
     db.refresh(customer)
     return customer
+
 
 @app.get("/customers/{customer_id}", response_model=CustomerRead)
 def get_customer(customer_id:int, db: Session = Depends(get_db)):
@@ -105,8 +111,16 @@ def get_service(service_id: int, db: Session = Depends(get_db)):
     if service is None:
         raise HTTPException(status_code=404, detail="Service not found")
     return service
+
+
+
 # Press the green button in the gutter to run the script.
 if __name__ == '__main__':
     print('PyCharm')
+    hashed = hash_password("hello123")
+    print(hashed)
+    print(verify_password("hello123", hashed))
+    print(verify_password("wrongpassword", hashed))
+
 
 # See PyCharm help at https://www.jetbrains.com/help/pycharm/
