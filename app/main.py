@@ -5,10 +5,10 @@ from sqlalchemy.orm import Session
 
 import app
 from app.models import Customer, Service, Appointment
-from app.schemas import(
+from app.schemas import (
     CustomerCreate, CustomerRead,
     ServiceCreate, ServiceRead,
-    AppointmentCreate, AppointmentRead
+    AppointmentCreate, AppointmentRead, CustomerLogin
 )
 
 from app.security import hash_password
@@ -89,6 +89,27 @@ def get_customer(customer_id:int, db: Session = Depends(get_db)):
     if customer is None:
         raise HTTPException(status_code=404, detail="Customer not found")
     return customer
+
+@app.post("/login")
+def customer_login(payload:CustomerLogin, db: Session = Depends(get_db)):
+    # Find customer using the email sent by the client
+    #return first customer with matching
+    customer = db.query(Customer).filter(Customer.email == payload.email).first()
+
+    if customer is None:
+        raise HTTPException(status_code=401, detail="Invalid email or password")
+
+    #Compare submitted password againsts stored hash
+    hashed_password = customer.hashed_password #database
+    password = payload.password
+
+    #verify password  and hash
+    is_valid = verify_password(password, hashed_password) #return true or false
+
+    #if True --> if False 401 unauthorized-->
+    if not is_valid :
+        raise HTTPException(status_code=401, detail="Invalid email or password")
+    return {"message": "Login successful"}
 
 
 @app.post("/services", response_model=ServiceRead)

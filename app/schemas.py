@@ -30,6 +30,11 @@ class CustomerRead(BaseModel):
     class Config:
         from_attributes = True
 
+#customer login
+class CustomerLogin(BaseModel):
+    email: EmailStr
+    password:str
+
 class AppointmentCreate(BaseModel):
     #no id since client only books and db sets id
     customer_id: int
